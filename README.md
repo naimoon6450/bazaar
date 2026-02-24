@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bazaar
 
-## Getting Started
+A curated brand directory built with Next.js, TypeScript, and SQLite. Browse brands by category, style, location, and price — with product imagery pulled from Shopify storefronts.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router) + TypeScript + Tailwind + shadcn/ui
+- **SQLite** via better-sqlite3 (local) / Cloudflare D1 (production)
+- **Drizzle ORM** for schema definitions
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # edit as needed
+npm run db:migrate            # create SQLite database
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Importing data
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Upload a CSV/XLSX through the admin panel at `/admin`, or run directly:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx tsx scripts/import-csv.ts path/to/brands.csv
+```
 
-## Learn More
+Expected columns: `Brand`, `Product Categories`, `Style Focus`, `Notes`, `Based In`, `Website`, `Price Range`, `Rating (Notes)`
 
-To learn more about Next.js, take a look at the following resources:
+## Enrichment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The enrichment pipeline fetches metadata and products from brand websites:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Metadata**: HTTP status, title, description, og:image
+- **Products**: For Shopify stores (75% of brands), pulls 8 products via `/products.json` with images, prices, and direct links
+- **US geo-redirect detection**: Automatically resolves the correct regional storefront
 
-## Deploy on Vercel
+Trigger manually from `/admin` or via the cron endpoint at `/api/cron/enrich`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+  app/           # Pages and API routes (thin handlers)
+  components/    # UI components
+  lib/
+    db/          # Schema, migrations, connection
+    services/    # Business logic (brand queries, tag aggregation)
+    ingest/      # CSV/XLSX parsing + normalization
+    enrich/      # Metadata + Shopify product fetching
+    validation/  # Admin auth
+```
+
+## Roadmap
+
+See [PROGRESS.md](./PROGRESS.md) for detailed status and planned phases (product browsing, affiliate links, SEO collections, newsletters).
