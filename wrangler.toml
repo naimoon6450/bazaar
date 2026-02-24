@@ -1,0 +1,16 @@
+name = "bazaar-site"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = ".vercel/output/static"
+
+# D1 database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "bazaar-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# Cron trigger for enrichment - runs daily at 3am UTC
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+ADMIN_PASSWORD = "change-me-in-production"
