@@ -8,9 +8,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const { forceAll = false } = body;
-    const result = await enrichBatch(forceAll);
+    const result = await enrichBatch();
     return Response.json(result);
   } catch (err) {
     console.error("POST /api/admin/enrich/run error:", err);

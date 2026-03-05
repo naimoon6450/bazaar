@@ -45,7 +45,7 @@ export function BrandCard({ brand }: BrandCardProps) {
         "hover:border-foreground/20 hover:shadow-sm"
       )}
     >
-      {brand.thumbnailUrl ? (
+      {brand.thumbnailUrl && (
         <div className="aspect-[4/3] w-full bg-muted overflow-hidden">
           <img
             src={brand.thumbnailUrl}
@@ -54,17 +54,6 @@ export function BrandCard({ brand }: BrandCardProps) {
             loading="lazy"
           />
         </div>
-      ) : (
-        <div className="aspect-[4/3] w-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
-          <span className="text-3xl font-semibold text-muted-foreground">
-            {brand.name
-              .split(" ")
-              .slice(0, 2)
-              .map((word) => word[0])
-              .join("")
-              .toUpperCase()}
-          </span>
-        </div>
       )}
       <div className="p-5">
       <div className="flex items-start justify-between gap-3">
@@ -72,16 +61,15 @@ export function BrandCard({ brand }: BrandCardProps) {
           {brand.name}
         </h3>
         {brand.websiteHost && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              window.open(brand.websiteUrlCanonical || "#", "_blank", "noopener,noreferrer");
-            }}
+          <a
+            href={brand.websiteUrlCanonical || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+          </a>
         )}
       </div>
 

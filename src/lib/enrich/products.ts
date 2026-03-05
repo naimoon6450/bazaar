@@ -20,49 +20,23 @@ interface ShopifyProductsResponse {
 }
 
 /**
- * Detect whether a domain is a Shopify store by probing /products.json and checking HTML.
+ * Detect whether a domain is a Shopify store by probing /products.json.
  */
 export async function detectShopify(url: string): Promise<boolean> {
   try {
     const base = new URL(url);
     const probeUrl = `${base.protocol}//${base.host}/products.json?limit=1`;
 
-    // First try the standard products.json endpoint
     const res = await fetch(probeUrl, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
       redirect: "follow",
     });
 
-    if (res.ok) {
-      const text = await res.text();
-      if (text.includes('"products"')) return true;
-    }
+    if (!res.ok) return false;
 
-    // If that fails, check the homepage HTML for Shopify indicators
-    const homeRes = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
-      signal: AbortSignal.timeout(8000),
-      redirect: "follow",
-    });
-
-    if (homeRes.ok) {
-      const html = await homeRes.text();
-      // Check for various Shopify indicators
-      const shopifyIndicators = [
-        'shopify',
-        'Shopify',
-        'cdn.shopify.com',
-        'shopifyapps.com',
-        'myshopify.com',
-        'ForestShopify', // For Forest CMS
-        'data-shopify' // HTML attributes
-      ];
-
-      return shopifyIndicators.some(indicator => html.includes(indicator));
-    }
-
-    return false;
+    const text = await res.text();
+    return text.includes('"products"');
   } catch {
     return false;
   }
@@ -168,32 +142,23 @@ export async function fetchProducts(
   db.delete(brandProducts).where(eq(brandProducts.brandId, brandId)).run();
 
   const now = new Date().toISOString();
-
-  // Filter valid products: has image, published, and available variants
-  const validProducts = data.products.filter((product) => {
-    // Must have image
-    if (!product.images?.[0]?.src) return false;
-    // Must be published
-    if (!product.published_at) return false;
-    // Must have available variant
-    if (!product.variants?.some((v) => v.available)) return false;
-    return true;
-  });
-
-  // Sort by published_at DESC (newest first)
-  validProducts.sort(
-    (a, b) =>
-      new Date(b.published_at || 0).getTime() -
-      new Date(a.published_at || 0).getTime()
-  );
-
   let count = 0;
 
-  for (const product of validProducts) {
+  for (const product of data.products) {
     // Stop once we have enough valid products
     if (count >= limit) break;
 
-    const imageUrl = product.images?.[0]?.src!;
+    // Skip products with no images
+    const imageUrl = product.images?.[0]?.src;
+    if (!imageUrl) continue;
+
+    // Skip unpublished products
+    if (!product.published_at) continue;
+
+    // Skip products where no variant is available
+    const hasAvailable = product.variants?.some((v) => v.available);
+    if (!hasAvailable) continue;
+
     const productUrl = `${base.protocol}//${userFacingHost}/products/${product.handle}`;
 
     // Verify the product page actually exists via its .json endpoint

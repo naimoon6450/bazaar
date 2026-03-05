@@ -4,11 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-} from "@/components/ui/dropdown-menu";
 
 interface FilterSection {
   label: string;
@@ -52,50 +47,36 @@ export function BrandFilters({
 
       {sections.map((section) => {
         if (section.options.length === 0) return null;
+
         const active = activeFilters[section.paramKey] || [];
 
         return (
-          <DropdownMenu key={section.paramKey}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full justify-between">
-                {section.label}
-                <svg
-                  className="ml-2 h-3 w-3"
-                  viewBox="0 0 10 6"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M1 1L5 5L9 1"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
+          <div key={section.paramKey}>
+            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              {section.label}
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
               {section.options.map((opt) => {
                 const isActive = active.includes(opt.slug);
                 return (
-                  <label
+                  <button
                     key={opt.slug}
-                    className="flex items-center px-3 py-1 text-sm cursor-pointer hover:bg-muted/10"
+                    onClick={() => onToggleFilter(section.paramKey, opt.slug)}
+                    className={cn(
+                      "inline-flex items-center rounded-full px-3 py-1 text-xs transition-colors",
+                      "border",
+                      isActive
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-transparent text-muted-foreground border-border hover:border-foreground/30 hover:text-foreground"
+                    )}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isActive}
-                      onChange={() => onToggleFilter(section.paramKey, opt.slug)}
-                      className="mr-2 h-4 w-4"
-                    />
-                    <span className="flex-1">{opt.label}</span>
-                    <span className="text-xs opacity-50">{opt.count}</span>
-                  </label>
+                    {opt.label}
+                    <span className="ml-1.5 opacity-50">{opt.count}</span>
+                  </button>
                 );
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </div>
+          </div>
         );
       })}
     </div>
