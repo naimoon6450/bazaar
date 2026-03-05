@@ -203,19 +203,39 @@ export function listBrands(params: BrandListParams): {
       }
     }
 
-    const result: BrandListItem[] = brandRows.map((b) => ({
-      id: b.id,
-      name: b.name,
-      slug: b.slug,
-      basedIn: b.based_in,
-      websiteUrlCanonical: b.website_url_canonical,
-      websiteHost: b.website_host,
-      notes: b.notes,
-      priceTier: b.price_tier,
-      priceLabel: b.price_label,
-      tags: tagMap.get(b.id) || [],
-      thumbnailUrl: thumbMap.get(b.id) || null,
-    }));
+    // also get og:image from enrichment as fallback
+    const enrichMap = new Map<number, string>();
+    if (brandIds.length > 0) {
+      const enrichPlaceholders = brandIds.map(() => "?").join(",");
+      const enrichRows = sqlite
+        .prepare(
+          `SELECT brand_id, og_image_url FROM enrichment
+           WHERE brand_id IN (${enrichPlaceholders}) AND og_image_url IS NOT NULL`
+        )
+        .all(...brandIds) as { brand_id: number; og_image_url: string }[];
+      for (const er of enrichRows) {
+        if (er.og_image_url) enrichMap.set(er.brand_id, er.og_image_url);
+      }
+    }
+
+    const result: BrandListItem[] = brandRows.map((b) => {
+      // prefer a product thumbnail, otherwise use enrichment og:image
+      const prodThumb = thumbMap.get(b.id) || null;
+      const enrichThumb = enrichMap.get(b.id) || null;
+      return {
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+        basedIn: b.based_in,
+        websiteUrlCanonical: b.website_url_canonical,
+        websiteHost: b.website_host,
+        notes: b.notes,
+        priceTier: b.price_tier,
+        priceLabel: b.price_label,
+        tags: tagMap.get(b.id) || [],
+        thumbnailUrl: prodThumb || enrichThumb,
+      };
+    });
 
     return { brands: result, total };
   } finally {

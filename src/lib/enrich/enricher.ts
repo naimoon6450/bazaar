@@ -118,7 +118,7 @@ function extractMeta(html: string, name: string): string | null {
 /**
  * Get brands that need enrichment checking.
  */
-export function getBrandsToEnrich(): {
+export function getBrandsToEnrich(forceAll = false): {
   brandId: number;
   url: string;
   host: string;
@@ -126,6 +126,47 @@ export function getBrandsToEnrich(): {
   existingLastModified: string | null;
 }[] {
   const db = getDb();
+
+  // If forceAll is true, get all brands with websites
+  if (forceAll) {
+    const Database = require("better-sqlite3");
+    const path = require("path");
+    const dbPath =
+      process.env.DATABASE_PATH ||
+      path.join(process.cwd(), "data", "bazaar.db");
+    const sqlite = new Database(dbPath, { readonly: true });
+
+    try {
+      const rows = sqlite
+        .prepare(
+          `SELECT b.id as brand_id, b.website_url_canonical as url,
+                  b.website_host as host, e.etag, e.last_modified
+           FROM brands b
+           LEFT JOIN enrichment e ON e.brand_id = b.id
+           WHERE b.website_url_canonical IS NOT NULL
+           ORDER BY b.id`
+        )
+        .all() as {
+        brand_id: number;
+        url: string;
+        host: string;
+        etag: string | null;
+        last_modified: string | null;
+      }[];
+
+      return rows.map((r) => ({
+        brandId: r.brand_id,
+        url: r.url,
+        host: r.host || "",
+        existingEtag: r.etag,
+        existingLastModified: r.last_modified,
+      }));
+    } finally {
+      sqlite.close();
+    }
+  }
+
+  // Original logic for selective enrichment
   const now = new Date();
 
   const recheckCutoff = new Date(
@@ -281,11 +322,11 @@ export async function enrichOne(brandId: number): Promise<EnrichResult> {
 /**
  * Run a batch enrichment with per-domain delay and concurrency cap.
  */
-export async function enrichBatch(): Promise<{
+export async function enrichBatch(forceAll = false): Promise<{
   processed: number;
   errors: number;
 }> {
-  const toEnrich = getBrandsToEnrich();
+  const toEnrich = getBrandsToEnrich(forceAll);
 
   if (toEnrich.length === 0) {
     return { processed: 0, errors: 0 };

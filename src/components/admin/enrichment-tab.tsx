@@ -11,6 +11,7 @@ export function EnrichmentTab() {
     errors: number;
   } | null>(null);
   const [error, setError] = useState("");
+  const [forceAll, setForceAll] = useState(false);
 
   const runEnrichment = async () => {
     setRunning(true);
@@ -20,6 +21,8 @@ export function EnrichmentTab() {
     try {
       const res = await fetch("/api/admin/enrich/run", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceAll }),
       });
 
       const data = await res.json();
@@ -47,6 +50,26 @@ export function EnrichmentTab() {
         </p>
       </div>
 
+      <div className="flex items-center space-x-2">
+        <input
+          type="checkbox"
+          id="forceAll"
+          checked={forceAll}
+          onChange={(e) => setForceAll(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+        />
+        <label htmlFor="forceAll" className="text-sm font-medium">
+          Force enrich all brands (ignore schedule)
+        </label>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        {forceAll
+          ? "Will process ALL brands with websites, regardless of when they were last checked."
+          : "Will only process brands that haven't been checked recently or had errors."
+        }
+      </p>
+
       <Button
         onClick={runEnrichment}
         disabled={running}
@@ -55,7 +78,7 @@ export function EnrichmentTab() {
         <RefreshCw
           className={`mr-2 h-4 w-4 ${running ? "animate-spin" : ""}`}
         />
-        {running ? "Running..." : "Run enrichment batch"}
+        {running ? "Running..." : `Run enrichment${forceAll ? " (all brands)" : " batch"}`}
       </Button>
 
       {error && (

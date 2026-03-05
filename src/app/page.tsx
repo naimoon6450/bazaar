@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, Suspense } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, LayoutGrid, TableProperties, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandGrid } from "@/components/brand-grid";
 import { BrandFilters } from "@/components/brand-filters";
 import { useBrands, useTags } from "@/lib/hooks/use-brands";
+import type { BrandListItem } from "@/lib/services/brands";
 
 const SORT_OPTIONS = [
   { value: "az", label: "A\u2013Z" },
@@ -60,6 +62,13 @@ function DirectoryContent() {
   }, [debouncedQuery, sort, activeFilters, router]);
 
   const { tags } = useTags();
+
+  // pagination state
+  const PAGE_SIZE = 24;
+  const [page, setPage] = useState(0);
+  const [accumulatedBrands, setAccumulatedBrands] = useState<BrandListItem[]>([]);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
   const { brands, total, loading } = useBrands({
     q: debouncedQuery || undefined,
     cat: activeFilters.cat?.join(",") || undefined,
@@ -67,7 +76,49 @@ function DirectoryContent() {
     based: activeFilters.based?.join(",") || undefined,
     price: activeFilters.price?.join(",") || undefined,
     sort: sort as "az" | "za" | "updated",
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
+
+  // reset pagination when filters/sort/query change
+  useEffect(() => {
+    setPage(0);
+    setAccumulatedBrands([]);
+  }, [debouncedQuery, sort, activeFilters]);
+
+  // append or replace based on page
+  useEffect(() => {
+    if (page === 0) {
+      setAccumulatedBrands(brands);
+    } else if (brands.length > 0) {
+      setAccumulatedBrands((prev) => {
+        // merge while keeping uniqueness by id
+        const merged = new Map<number, BrandListItem>();
+        prev.forEach((b) => merged.set(b.id, b));
+        brands.forEach((b) => merged.set(b.id, b));
+        return Array.from(merged.values());
+      });
+    }
+  }, [brands, page]);
+
+  // intersection observer to auto load next page
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          accumulatedBrands.length < total &&
+          !loading
+        ) {
+          setPage((p) => p + 1);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [accumulatedBrands, total, loading]);
 
   const toggleFilter = useCallback(
     (paramKey: string, slug: string) => {
@@ -184,7 +235,20 @@ function DirectoryContent() {
               </div>
             </div>
 
-            <BrandGrid brands={brands} loading={loading} view={view} />
+            <BrandGrid brands={accumulatedBrands} loading={loading} view={view} />
+            {/* sentinel for automatic loading */}
+            <div ref={loadMoreRef} className="h-1" />
+            {/* optional button fallback */}
+            {accumulatedBrands.length < total && (
+              <div className="mt-6 text-center">
+                <Button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={loading}
+                >
+                  {loading ? "Loading…" : "Load more"}
+                </Button>
+              </div>
+            )}
           </main>
         </div>
       </div>
