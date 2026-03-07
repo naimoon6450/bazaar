@@ -109,11 +109,12 @@ export async function fetchProducts(
 
   // Detect if this store redirects US users to a different domain
   const userFacingHost = await resolveUserFacingDomain(base);
+  const hasSeparateStorefronts = userFacingHost !== base.host;
 
-  // Fetch products from the ORIGIN domain to get native-currency prices.
-  // Product links will still point to the user-facing domain for shoppers.
+  // Fetch products from the USER-FACING domain (US storefront if it exists).
+  // This gives us the prices a US shopper will actually see on checkout.
   const fetchLimit = limit + 8;
-  const productsUrl = `${base.protocol}//${base.host}/products.json?limit=${fetchLimit}`;
+  const productsUrl = `${base.protocol}//${userFacingHost}/products.json?limit=${fetchLimit}`;
 
   let data: ShopifyProductsResponse;
   try {
@@ -139,41 +140,63 @@ export async function fetchProducts(
     return { count: 0, error: null };
   }
 
+  // Detect display currency from the user-facing domain
+  const firstHandle = data.products.find((p) => p.handle)?.handle;
+  let displayCurrency: string;
+  if (firstHandle) {
+    displayCurrency = await detectStoreCurrency(
+      `${base.protocol}//${userFacingHost}/products/${firstHandle}`,
+      userFacingHost
+    );
+  } else {
+    displayCurrency = detectCurrencyHeuristic(userFacingHost);
+  }
+
+  // If there's a separate origin storefront, detect its currency and
+  // build a price map by handle for origin prices
+  let originCurrency: string | null = null;
+  const originPriceByHandle = new Map<string, string>();
+
+  if (hasSeparateStorefronts) {
+    // Detect origin currency
+    const originProbeHandle = firstHandle; // same product name may differ, but try
+    if (originProbeHandle) {
+      originCurrency = await detectStoreCurrency(
+        `${base.protocol}//${base.host}/products/${originProbeHandle}`,
+        base.host
+      );
+      // If heuristic-only result matches display, it's not useful
+      if (originCurrency === displayCurrency) originCurrency = null;
+    }
+
+    // Fetch origin products for origin prices
+    if (originCurrency) {
+      try {
+        const originUrl = `${base.protocol}//${base.host}/products.json?limit=${fetchLimit}`;
+        const originRes = await fetch(originUrl, {
+          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+          signal: AbortSignal.timeout(15000),
+          redirect: "follow",
+        });
+        if (originRes.ok) {
+          const originData = (await originRes.json()) as ShopifyProductsResponse;
+          // Match by title since handles/IDs differ across storefronts
+          for (const p of originData.products || []) {
+            const price = p.variants?.[0]?.price;
+            if (price) originPriceByHandle.set(p.title, price);
+          }
+        }
+      } catch {
+        // Origin fetch failed — we'll just have display prices
+      }
+    }
+  }
+
   // Clear existing products for this brand (replace strategy)
   db.delete(brandProducts).where(eq(brandProducts.brandId, brandId)).run();
 
   const now = new Date().toISOString();
   let count = 0;
-
-  // Detect store currency from the ORIGIN domain (not the geo-redirected one).
-  // A store like 11-11.in redirects US users to 11-11.us (USD prices),
-  // but the brand's native currency is INR — we want that.
-  const firstHandle = data.products.find((p) => p.handle)?.handle;
-  let storeCurrency: string;
-  if (firstHandle) {
-    const originProbeUrl = `${base.protocol}//${base.host}/products/${firstHandle}`;
-    storeCurrency = await detectStoreCurrency(originProbeUrl, base.host);
-
-    // If origin detection fell back to heuristic and we have a different
-    // user-facing domain, also try that as a secondary signal
-    if (
-      storeCurrency === detectCurrencyHeuristic(base.host) &&
-      userFacingHost !== base.host
-    ) {
-      const userFacingProbeUrl = `${base.protocol}//${userFacingHost}/products/${firstHandle}`;
-      const userFacingCurrency = await detectStoreCurrency(
-        userFacingProbeUrl,
-        userFacingHost
-      );
-      // Only override if origin gave us nothing concrete (heuristic only)
-      // and the user-facing domain has JSON-LD data
-      if (userFacingCurrency !== detectCurrencyHeuristic(userFacingHost)) {
-        storeCurrency = userFacingCurrency;
-      }
-    }
-  } else {
-    storeCurrency = detectCurrencyHeuristic(base.host);
-  }
 
   for (const product of data.products) {
     // Stop once we have enough valid products
@@ -190,13 +213,9 @@ export async function fetchProducts(
     const hasAvailable = product.variants?.some((v) => v.available);
     if (!hasAvailable) continue;
 
-    // Product link for shoppers — prefer user-facing domain, fall back to origin
-    let productUrl = `${base.protocol}//${userFacingHost}/products/${product.handle}`;
+    const productUrl = `${base.protocol}//${userFacingHost}/products/${product.handle}`;
 
-    // Verify the product page actually exists via its .json endpoint.
-    // Check user-facing domain first; if that fails, try origin domain.
-    // (catches geo-locked, Locksmith-hidden, and soft-404 pages)
-    let productAccessible = false;
+    // Verify the product page actually exists
     try {
       const checkRes = await fetch(`${productUrl}.json`, {
         method: "HEAD",
@@ -204,33 +223,15 @@ export async function fetchProducts(
         signal: AbortSignal.timeout(5000),
         redirect: "follow",
       });
-      productAccessible = checkRes.ok;
+      if (!checkRes.ok) continue;
     } catch {
-      // user-facing domain check failed
+      continue;
     }
-
-    if (!productAccessible && userFacingHost !== base.host) {
-      // Try origin domain
-      const originProductUrl = `${base.protocol}//${base.host}/products/${product.handle}`;
-      try {
-        const checkRes = await fetch(`${originProductUrl}.json`, {
-          method: "HEAD",
-          headers: { "User-Agent": USER_AGENT },
-          signal: AbortSignal.timeout(5000),
-          redirect: "follow",
-        });
-        if (checkRes.ok) {
-          productAccessible = true;
-          productUrl = originProductUrl;
-        }
-      } catch {
-        // origin domain check also failed
-      }
-    }
-
-    if (!productAccessible) continue;
 
     const price = product.variants?.[0]?.price || null;
+
+    // Look up origin price by title match
+    const originPrice = originPriceByHandle.get(product.title) || null;
 
     db.insert(brandProducts)
       .values({
@@ -239,7 +240,9 @@ export async function fetchProducts(
         title: product.title,
         imageUrl,
         price,
-        currency: storeCurrency,
+        currency: displayCurrency,
+        priceOrigin: originPrice,
+        currencyOrigin: originPrice ? originCurrency : null,
         productUrl,
         productType: product.product_type || null,
         fetchedAt: now,

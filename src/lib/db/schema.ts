@@ -84,6 +84,8 @@ export const brandProducts = sqliteTable(
     imageUrl: text("image_url"),
     price: text("price"),
     currency: text("currency").default("USD"),
+    priceOrigin: text("price_origin"),
+    currencyOrigin: text("currency_origin"),
     productUrl: text("product_url").notNull(),
     productType: text("product_type"),
     fetchedAt: text("fetched_at")

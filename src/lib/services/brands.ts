@@ -37,6 +37,8 @@ export interface ProductItem {
   imageUrl: string | null;
   price: string | null;
   currency: string | null;
+  priceOrigin: string | null;
+  currencyOrigin: string | null;
   productUrl: string;
   productType: string | null;
 }
@@ -397,6 +399,8 @@ export function getBrandBySlug(slug: string): BrandDetail | null {
       imageUrl: brandProducts.imageUrl,
       price: brandProducts.price,
       currency: brandProducts.currency,
+      priceOrigin: brandProducts.priceOrigin,
+      currencyOrigin: brandProducts.currencyOrigin,
       productUrl: brandProducts.productUrl,
       productType: brandProducts.productType,
     })

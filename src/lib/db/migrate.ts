@@ -128,5 +128,20 @@ for (const col of priceColumns) {
   }
 }
 
+// Add origin price columns to brand_products if they don't exist
+const productPriceColumns = [
+  { name: "price_origin", type: "TEXT" },
+  { name: "currency_origin", type: "TEXT" },
+];
+
+for (const col of productPriceColumns) {
+  try {
+    db.exec(`ALTER TABLE brand_products ADD COLUMN ${col.name} ${col.type}`);
+    console.log(`Added ${col.name} column to brand_products table`);
+  } catch {
+    // Column already exists — fine
+  }
+}
+
 console.log(`Database initialized at ${DB_PATH}`);
 db.close();
