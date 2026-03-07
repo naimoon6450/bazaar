@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   uniqueIndex,
   primaryKey,
 } from "drizzle-orm/sqlite-core";
@@ -17,6 +18,11 @@ export const brands = sqliteTable("brands", {
   notes: text("notes"),
   priceTier: integer("price_tier"),
   priceLabel: text("price_label"),
+  priceAmount: real("price_amount"),
+  priceAmountMin: real("price_amount_min"),
+  priceAmountMax: real("price_amount_max"),
+  priceCurrency: text("price_currency"),
+  priceRaw: text("price_raw"),
   ratingNotes: text("rating_notes"),
   createdAt: text("created_at")
     .notNull()
@@ -78,6 +84,8 @@ export const brandProducts = sqliteTable(
     imageUrl: text("image_url"),
     price: text("price"),
     currency: text("currency").default("USD"),
+    priceOrigin: text("price_origin"),
+    currencyOrigin: text("currency_origin"),
     productUrl: text("product_url").notNull(),
     productType: text("product_type"),
     fetchedAt: text("fetched_at")

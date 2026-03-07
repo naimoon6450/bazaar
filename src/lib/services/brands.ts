@@ -8,7 +8,7 @@ export interface BrandListParams {
   style?: string;
   based?: string;
   price?: string;
-  sort?: "az" | "za" | "updated";
+  sort?: "az" | "za" | "updated" | "price_low" | "price_high";
   limit?: number;
   offset?: number;
 }
@@ -23,6 +23,11 @@ export interface BrandListItem {
   notes: string | null;
   priceTier: number | null;
   priceLabel: string | null;
+  priceAmount: number | null;
+  priceAmountMin: number | null;
+  priceAmountMax: number | null;
+  priceCurrency: string | null;
+  priceRaw: string | null;
   tags: { type: string; label: string; slug: string }[];
   thumbnailUrl: string | null;
 }
@@ -32,6 +37,8 @@ export interface ProductItem {
   imageUrl: string | null;
   price: string | null;
   currency: string | null;
+  priceOrigin: string | null;
+  currencyOrigin: string | null;
   productUrl: string;
   productType: string | null;
 }
@@ -116,6 +123,16 @@ export function listBrands(params: BrandListParams): {
     case "updated":
       orderClause = "ORDER BY b.updated_at DESC";
       break;
+    case "price_low":
+      // Sort by price tier (cheapest first), nulls last
+      orderClause =
+        "ORDER BY CASE WHEN b.price_tier IS NULL THEN 1 ELSE 0 END, b.price_tier ASC, b.name COLLATE NOCASE ASC";
+      break;
+    case "price_high":
+      // Sort by price tier (most expensive first), nulls last
+      orderClause =
+        "ORDER BY CASE WHEN b.price_tier IS NULL THEN 1 ELSE 0 END, b.price_tier DESC, b.name COLLATE NOCASE ASC";
+      break;
     default:
       orderClause = "ORDER BY b.name COLLATE NOCASE ASC";
   }
@@ -123,7 +140,9 @@ export function listBrands(params: BrandListParams): {
   const allBindings = [...bindings];
   const mainQuery = `
     SELECT b.id, b.name, b.slug, b.based_in, b.website_url_canonical,
-           b.website_host, b.notes, b.price_tier, b.price_label
+           b.website_host, b.notes, b.price_tier, b.price_label,
+           b.price_amount, b.price_amount_min, b.price_amount_max,
+           b.price_currency, b.price_raw
     FROM brands b
     ${whereClause}
     ${orderClause}
@@ -156,6 +175,11 @@ export function listBrands(params: BrandListParams): {
       notes: string | null;
       price_tier: number | null;
       price_label: string | null;
+      price_amount: number | null;
+      price_amount_min: number | null;
+      price_amount_max: number | null;
+      price_currency: string | null;
+      price_raw: string | null;
     }[];
 
     // Fetch tags for all brands in one query
@@ -213,6 +237,11 @@ export function listBrands(params: BrandListParams): {
       notes: b.notes,
       priceTier: b.price_tier,
       priceLabel: b.price_label,
+      priceAmount: b.price_amount,
+      priceAmountMin: b.price_amount_min,
+      priceAmountMax: b.price_amount_max,
+      priceCurrency: b.price_currency,
+      priceRaw: b.price_raw,
       tags: tagMap.get(b.id) || [],
       thumbnailUrl: thumbMap.get(b.id) || null,
     }));
@@ -276,6 +305,8 @@ export function getBrandBySlug(slug: string): BrandDetail | null {
         .prepare(
           `SELECT b.id, b.name, b.slug, b.based_in, b.website_url_canonical,
                   b.website_host, b.notes, b.price_tier, b.price_label,
+                  b.price_amount, b.price_amount_min, b.price_amount_max,
+                  b.price_currency, b.price_raw,
                   COUNT(DISTINCT t.slug) as shared_tags
            FROM brands b
            JOIN brand_tags bt ON bt.brand_id = b.id
@@ -348,6 +379,11 @@ export function getBrandBySlug(slug: string): BrandDetail | null {
         notes: r.notes as string | null,
         priceTier: r.price_tier as number | null,
         priceLabel: r.price_label as string | null,
+        priceAmount: r.price_amount as number | null,
+        priceAmountMin: r.price_amount_min as number | null,
+        priceAmountMax: r.price_amount_max as number | null,
+        priceCurrency: r.price_currency as string | null,
+        priceRaw: r.price_raw as string | null,
         tags: simTagMap.get(r.id) || [],
         thumbnailUrl: simThumbMap.get(r.id) || null,
       }));
@@ -363,6 +399,8 @@ export function getBrandBySlug(slug: string): BrandDetail | null {
       imageUrl: brandProducts.imageUrl,
       price: brandProducts.price,
       currency: brandProducts.currency,
+      priceOrigin: brandProducts.priceOrigin,
+      currencyOrigin: brandProducts.currencyOrigin,
       productUrl: brandProducts.productUrl,
       productType: brandProducts.productType,
     })
@@ -384,6 +422,11 @@ export function getBrandBySlug(slug: string): BrandDetail | null {
     notes: brand.notes,
     priceTier: brand.priceTier,
     priceLabel: brand.priceLabel,
+    priceAmount: brand.priceAmount,
+    priceAmountMin: brand.priceAmountMin,
+    priceAmountMax: brand.priceAmountMax,
+    priceCurrency: brand.priceCurrency,
+    priceRaw: brand.priceRaw,
     ratingNotes: brand.ratingNotes,
     createdAt: brand.createdAt,
     updatedAt: brand.updatedAt,

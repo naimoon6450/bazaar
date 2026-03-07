@@ -109,8 +109,10 @@ export async function fetchProducts(
 
   // Detect if this store redirects US users to a different domain
   const userFacingHost = await resolveUserFacingDomain(base);
+  const hasSeparateStorefronts = userFacingHost !== base.host;
 
-  // Fetch more than needed to account for unavailable/hidden products
+  // Fetch products from the USER-FACING domain (US storefront if it exists).
+  // This gives us the prices a US shopper will actually see on checkout.
   const fetchLimit = limit + 8;
   const productsUrl = `${base.protocol}//${userFacingHost}/products.json?limit=${fetchLimit}`;
 
@@ -138,6 +140,58 @@ export async function fetchProducts(
     return { count: 0, error: null };
   }
 
+  // Detect display currency from the user-facing domain
+  const firstHandle = data.products.find((p) => p.handle)?.handle;
+  let displayCurrency: string;
+  if (firstHandle) {
+    displayCurrency = await detectStoreCurrency(
+      `${base.protocol}//${userFacingHost}/products/${firstHandle}`,
+      userFacingHost
+    );
+  } else {
+    displayCurrency = detectCurrencyHeuristic(userFacingHost);
+  }
+
+  // If there's a separate origin storefront, detect its currency and
+  // build a price map by handle for origin prices
+  let originCurrency: string | null = null;
+  const originPriceByHandle = new Map<string, string>();
+
+  if (hasSeparateStorefronts) {
+    // Detect origin currency
+    const originProbeHandle = firstHandle; // same product name may differ, but try
+    if (originProbeHandle) {
+      originCurrency = await detectStoreCurrency(
+        `${base.protocol}//${base.host}/products/${originProbeHandle}`,
+        base.host
+      );
+      // If heuristic-only result matches display, it's not useful
+      if (originCurrency === displayCurrency) originCurrency = null;
+    }
+
+    // Fetch origin products for origin prices
+    if (originCurrency) {
+      try {
+        const originUrl = `${base.protocol}//${base.host}/products.json?limit=${fetchLimit}`;
+        const originRes = await fetch(originUrl, {
+          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+          signal: AbortSignal.timeout(15000),
+          redirect: "follow",
+        });
+        if (originRes.ok) {
+          const originData = (await originRes.json()) as ShopifyProductsResponse;
+          // Match by title since handles/IDs differ across storefronts
+          for (const p of originData.products || []) {
+            const price = p.variants?.[0]?.price;
+            if (price) originPriceByHandle.set(p.title, price);
+          }
+        }
+      } catch {
+        // Origin fetch failed — we'll just have display prices
+      }
+    }
+  }
+
   // Clear existing products for this brand (replace strategy)
   db.delete(brandProducts).where(eq(brandProducts.brandId, brandId)).run();
 
@@ -161,8 +215,7 @@ export async function fetchProducts(
 
     const productUrl = `${base.protocol}//${userFacingHost}/products/${product.handle}`;
 
-    // Verify the product page actually exists via its .json endpoint
-    // (catches geo-locked, Locksmith-hidden, and soft-404 pages)
+    // Verify the product page actually exists
     try {
       const checkRes = await fetch(`${productUrl}.json`, {
         method: "HEAD",
@@ -177,6 +230,9 @@ export async function fetchProducts(
 
     const price = product.variants?.[0]?.price || null;
 
+    // Look up origin price by title match
+    const originPrice = originPriceByHandle.get(product.title) || null;
+
     db.insert(brandProducts)
       .values({
         brandId,
@@ -184,7 +240,9 @@ export async function fetchProducts(
         title: product.title,
         imageUrl,
         price,
-        currency: detectCurrency(price, userFacingHost),
+        currency: displayCurrency,
+        priceOrigin: originPrice,
+        currencyOrigin: originPrice ? originCurrency : null,
         productUrl,
         productType: product.product_type || null,
         fetchedAt: now,
@@ -198,21 +256,68 @@ export async function fetchProducts(
 }
 
 /**
- * Simple currency heuristic based on domain and price magnitude.
- * Indian domains (.in) with high prices are likely INR.
+ * Detect the store's currency by scraping JSON-LD structured data from a product page.
+ * Falls back to a domain + magnitude heuristic if JSON-LD is unavailable.
  */
-function detectCurrency(price: string | null, host: string): string {
-  if (!price) return "USD";
+async function detectStoreCurrency(
+  productPageUrl: string,
+  host: string
+): Promise<string> {
+  try {
+    const res = await fetch(productPageUrl, {
+      headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow",
+    });
 
-  const numPrice = parseFloat(price);
-  if (isNaN(numPrice)) return "USD";
+    if (res.ok) {
+      const html = await res.text();
 
-  // Indian domains with prices > 500 are almost certainly INR
-  if (host.endsWith(".in") && numPrice > 500) return "INR";
+      // Extract JSON-LD blocks and look for priceCurrency
+      const jsonLdPattern =
+        /<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+      let match: RegExpExecArray | null;
 
-  // Other high-value indicators for INR
-  if (host.endsWith(".in") && numPrice > 100) return "INR";
+      while ((match = jsonLdPattern.exec(html)) !== null) {
+        try {
+          const data = JSON.parse(match[1]);
 
+          // priceCurrency can be at top level or nested in offers
+          const currency =
+            data?.priceCurrency ||
+            data?.offers?.priceCurrency ||
+            (Array.isArray(data?.offers) && data.offers[0]?.priceCurrency);
+
+          if (currency && typeof currency === "string") {
+            return currency.toUpperCase();
+          }
+        } catch {
+          // Malformed JSON-LD block, try next one
+        }
+      }
+
+      // Fallback: look for Shopify's inline currency meta/config
+      const metaCurrencyMatch = html.match(
+        /\"currency\"\s*:\s*\"([A-Z]{3})\"/
+      );
+      if (metaCurrencyMatch) {
+        return metaCurrencyMatch[1];
+      }
+    }
+  } catch {
+    // Network error, fall through to heuristic
+  }
+
+  return detectCurrencyHeuristic(host);
+}
+
+/**
+ * Fallback heuristic based on domain TLD.
+ */
+function detectCurrencyHeuristic(host: string): string {
+  if (host.endsWith(".in")) return "INR";
+  if (host.endsWith(".co.uk") || host.endsWith(".uk")) return "GBP";
+  if (host.endsWith(".eu")) return "EUR";
   return "USD";
 }
 

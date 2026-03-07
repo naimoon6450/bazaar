@@ -110,5 +110,38 @@ try {
   // Column already exists — fine
 }
 
+// Add normalized price columns to brands if they don't exist
+const priceColumns = [
+  { name: "price_amount", type: "REAL" },
+  { name: "price_amount_min", type: "REAL" },
+  { name: "price_amount_max", type: "REAL" },
+  { name: "price_currency", type: "TEXT" },
+  { name: "price_raw", type: "TEXT" },
+];
+
+for (const col of priceColumns) {
+  try {
+    db.exec(`ALTER TABLE brands ADD COLUMN ${col.name} ${col.type}`);
+    console.log(`Added ${col.name} column to brands table`);
+  } catch {
+    // Column already exists — fine
+  }
+}
+
+// Add origin price columns to brand_products if they don't exist
+const productPriceColumns = [
+  { name: "price_origin", type: "TEXT" },
+  { name: "currency_origin", type: "TEXT" },
+];
+
+for (const col of productPriceColumns) {
+  try {
+    db.exec(`ALTER TABLE brand_products ADD COLUMN ${col.name} ${col.type}`);
+    console.log(`Added ${col.name} column to brand_products table`);
+  } catch {
+    // Column already exists — fine
+  }
+}
+
 console.log(`Database initialized at ${DB_PATH}`);
 db.close();
