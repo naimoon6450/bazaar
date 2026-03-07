@@ -13,6 +13,8 @@ const SORT_OPTIONS = [
   { value: "az", label: "A\u2013Z" },
   { value: "za", label: "Z\u2013A" },
   { value: "updated", label: "Recently Updated" },
+  { value: "price_low", label: "Price: Low to High" },
+  { value: "price_high", label: "Price: High to Low" },
 ] as const;
 
 const PRICE_OPTIONS = [
@@ -66,7 +68,7 @@ function DirectoryContent() {
     style: activeFilters.style?.join(",") || undefined,
     based: activeFilters.based?.join(",") || undefined,
     price: activeFilters.price?.join(",") || undefined,
-    sort: sort as "az" | "za" | "updated",
+    sort,
   });
 
   const toggleFilter = useCallback(

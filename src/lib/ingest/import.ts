@@ -11,6 +11,7 @@ import {
   parseMultiValue,
   normalizeWebsite,
   parsePriceTier,
+  parsePrice,
   makeUniqueSlug,
 } from "./normalize";
 import type { RawBrandRow } from "./parse";
@@ -103,6 +104,7 @@ export function importRows(rows: RawBrandRow[]): ImportResult {
       // Normalize fields
       const website = normalizeWebsite(row.website);
       const price = parsePriceTier(row.priceRange);
+      const parsedPrice = parsePrice(row.priceRange);
       const categories = parseMultiValue(row.productCategories);
       const styles = parseMultiValue(row.styleFocus);
 
@@ -130,6 +132,11 @@ export function importRows(rows: RawBrandRow[]): ImportResult {
             notes: row.notes || null,
             priceTier: price.priceTier,
             priceLabel: price.priceLabel || null,
+            priceAmount: parsedPrice.amount,
+            priceAmountMin: parsedPrice.amountMin,
+            priceAmountMax: parsedPrice.amountMax,
+            priceCurrency: parsedPrice.currency,
+            priceRaw: parsedPrice.raw || null,
             ratingNotes: row.ratingNotes || null,
             updatedAt: now,
           })
@@ -155,6 +162,11 @@ export function importRows(rows: RawBrandRow[]): ImportResult {
           notes: row.notes || null,
           priceTier: price.priceTier,
           priceLabel: price.priceLabel || null,
+          priceAmount: parsedPrice.amount,
+          priceAmountMin: parsedPrice.amountMin,
+          priceAmountMax: parsedPrice.amountMax,
+          priceCurrency: parsedPrice.currency,
+          priceRaw: parsedPrice.raw || null,
           ratingNotes: row.ratingNotes || null,
           createdAt: now,
           updatedAt: now,
