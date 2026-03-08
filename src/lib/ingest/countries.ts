@@ -1,0 +1,943 @@
+/**
+ * Country normalization for the "Based In" taxonomy.
+ *
+ * Maps raw location strings (city, region, alias, or free-text variants)
+ * to canonical country-level labels. Falls back to the trimmed input if
+ * no mapping is found so that no data is silently lost.
+ */
+
+/** Canonical country label → array of aliases/cities/regions to match (all lowercase). */
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  // ── South Asia ───────────────────────────────────────────────────────────
+  India: [
+    "india",
+    "indian",
+    "bharat",
+    // Major cities
+    "mumbai",
+    "bombay",
+    "delhi",
+    "new delhi",
+    "bengaluru",
+    "bangalore",
+    "hyderabad",
+    "ahmedabad",
+    "chennai",
+    "madras",
+    "kolkata",
+    "calcutta",
+    "surat",
+    "pune",
+    "jaipur",
+    "lucknow",
+    "kanpur",
+    "nagpur",
+    "indore",
+    "thane",
+    "bhopal",
+    "visakhapatnam",
+    "vadodara",
+    "ludhiana",
+    "agra",
+    "nashik",
+    "faridabad",
+    "meerut",
+    "rajkot",
+    "varanasi",
+    "srinagar",
+    "aurangabad",
+    "dhanbad",
+    "amritsar",
+    "navi mumbai",
+    "coimbatore",
+    "vijayawada",
+    "madurai",
+    "gurgaon",
+    "gurugram",
+    "noida",
+    "ghaziabad",
+    "chandigarh",
+    "kochi",
+    "cochin",
+    "thiruvananthapuram",
+    "trivandrum",
+    "patna",
+    "ranchi",
+    "jodhpur",
+    "udaipur",
+    "dehradun",
+    "haridwar",
+    "rishikesh",
+    "mysore",
+    "mysuru",
+    "hubli",
+    "mangalore",
+    "shimla",
+    "jammu",
+    "guwahati",
+    "bhubaneswar",
+    "cuttack",
+    "jabalpur",
+    "gwalior",
+    // States / Union Territories
+    "maharashtra",
+    "karnataka",
+    "tamil nadu",
+    "tamilnadu",
+    "telangana",
+    "andhra pradesh",
+    "kerala",
+    "gujarat",
+    "rajasthan",
+    "uttar pradesh",
+    "madhya pradesh",
+    "west bengal",
+    "bihar",
+    "odisha",
+    "jharkhand",
+    "chhattisgarh",
+    "assam",
+    "punjab",
+    "haryana",
+    "himachal pradesh",
+    "uttarakhand",
+    "jammu and kashmir",
+    "goa",
+    "tripura",
+    "meghalaya",
+    "manipur",
+    "nagaland",
+    "mizoram",
+    "arunachal pradesh",
+    "sikkim",
+  ],
+
+  Pakistan: [
+    "pakistan",
+    "pakistani",
+    // Major cities
+    "karachi",
+    "lahore",
+    "islamabad",
+    "rawalpindi",
+    "faisalabad",
+    "multan",
+    "hyderabad",   // Hyderabad, Sindh — listed after India's to avoid conflict (slug dedupe handles it)
+    "peshawar",
+    "quetta",
+    "sialkot",
+    "gujranwala",
+    "gujrat",
+    "bahawalpur",
+    "sargodha",
+    "sukkur",
+    "larkana",
+    "sheikhupura",
+    "rahim yar khan",
+    "jhang",
+    "dera ghazi khan",
+    "mirpur",
+    "muzaffarabad",
+    // Provinces / regions
+    "punjab (pakistan)",
+    "sindh",
+    "khyber pakhtunkhwa",
+    "balochistan",
+    "kpk",
+    "azad kashmir",
+  ],
+
+  Bangladesh: [
+    "bangladesh",
+    "bangladeshi",
+    "bengal",
+    // Major cities
+    "dhaka",
+    "chittagong",
+    "chattogram",
+    "sylhet",
+    "rajshahi",
+    "khulna",
+    "comilla",
+    "mymensingh",
+    "gazipur",
+    "narayanganj",
+    "rangpur",
+    "barisal",
+    "barishal",
+    "tangail",
+    "jessore",
+    "jashore",
+    "bogura",
+    // Divisions
+    "dhaka division",
+    "chittagong division",
+    "sylhet division",
+  ],
+
+  "Sri Lanka": [
+    "sri lanka",
+    "srilanka",
+    "ceylon",
+    "colombo",
+    "kandy",
+    "galle",
+    "negombo",
+    "jaffna",
+    "trincomalee",
+    "batticaloa",
+    "matara",
+    "kurunegala",
+    "ratnapura",
+  ],
+
+  Nepal: [
+    "nepal",
+    "nepali",
+    "nepalese",
+    "kathmandu",
+    "pokhara",
+    "lalitpur",
+    "bhaktapur",
+    "biratnagar",
+    "birgunj",
+    "dharan",
+  ],
+
+  // ── United Kingdom ────────────────────────────────────────────────────────
+  "United Kingdom": [
+    "united kingdom",
+    "uk",
+    "u.k.",
+    "great britain",
+    "britain",
+    "gb",
+    "england",
+    "english",
+    "scotland",
+    "scottish",
+    "wales",
+    "welsh",
+    "northern ireland",
+    "british",
+    // Major cities
+    "london",
+    "manchester",
+    "birmingham",
+    "glasgow",
+    "liverpool",
+    "leeds",
+    "sheffield",
+    "edinburgh",
+    "bristol",
+    "cardiff",
+    "belfast",
+    "nottingham",
+    "leicester",
+    "coventry",
+    "bradford",
+    "hull",
+    "wolverhampton",
+    "stoke-on-trent",
+    "stoke on trent",
+    "derby",
+    "newcastle",
+    "newcastle upon tyne",
+    "sunderland",
+    "portsmouth",
+    "southampton",
+    "oxford",
+    "cambridge",
+    "brighton",
+    "reading",
+    "exeter",
+    "york",
+    "bath",
+    "norwich",
+    "peterborough",
+    "swansea",
+    "dundee",
+    "aberdeen",
+    "inverness",
+    "ipswich",
+    "luton",
+    "milton keynes",
+    "plymouth",
+    "bournemouth",
+  ],
+
+  // ── United States ─────────────────────────────────────────────────────────
+  "United States": [
+    "united states",
+    "united states of america",
+    "usa",
+    "u.s.a.",
+    "u.s.",
+    "us",
+    "america",
+    "american",
+    // Major cities / metros
+    "new york",
+    "new york city",
+    "nyc",
+    "los angeles",
+    "la",
+    "chicago",
+    "houston",
+    "phoenix",
+    "philadelphia",
+    "san antonio",
+    "san diego",
+    "dallas",
+    "san jose",
+    "austin",
+    "jacksonville",
+    "fort worth",
+    "columbus",
+    "charlotte",
+    "san francisco",
+    "sf",
+    "bay area",
+    "seattle",
+    "denver",
+    "nashville",
+    "oklahoma city",
+    "el paso",
+    "washington",
+    "washington d.c.",
+    "washington dc",
+    "las vegas",
+    "portland",
+    "memphis",
+    "louisville",
+    "baltimore",
+    "milwaukee",
+    "albuquerque",
+    "tucson",
+    "fresno",
+    "sacramento",
+    "mesa",
+    "kansas city",
+    "atlanta",
+    "omaha",
+    "colorado springs",
+    "raleigh",
+    "miami",
+    "virginia beach",
+    "long beach",
+    "minneapolis",
+    "tampa",
+    "new orleans",
+    "orlando",
+    "boston",
+    "pittsburgh",
+    "detroit",
+    "phoenix",
+    "brooklyn",
+    "queens",
+    "bronx",
+    "manhattan",
+    // States
+    "california",
+    "texas",
+    "florida",
+    "new york state",
+    "illinois",
+    "pennsylvania",
+    "ohio",
+    "georgia",
+    "north carolina",
+    "michigan",
+    "new jersey",
+    "virginia",
+    "washington state",
+    "arizona",
+    "massachusetts",
+    "tennessee",
+    "indiana",
+    "missouri",
+    "maryland",
+    "wisconsin",
+    "colorado",
+    "minnesota",
+    "south carolina",
+    "alabama",
+    "louisiana",
+    "kentucky",
+    "oregon",
+    "oklahoma",
+    "connecticut",
+    "utah",
+    "iowa",
+    "nevada",
+    "arkansas",
+    "mississippi",
+    "kansas",
+    "new mexico",
+    "nebraska",
+    "west virginia",
+    "idaho",
+    "hawaii",
+    "new hampshire",
+    "maine",
+    "montana",
+    "rhode island",
+    "delaware",
+    "south dakota",
+    "north dakota",
+    "alaska",
+    "vermont",
+    "wyoming",
+  ],
+
+  // ── Canada ────────────────────────────────────────────────────────────────
+  Canada: [
+    "canada",
+    "canadian",
+    "toronto",
+    "montreal",
+    "vancouver",
+    "calgary",
+    "edmonton",
+    "ottawa",
+    "winnipeg",
+    "quebec city",
+    "hamilton",
+    "brampton",
+    "mississauga",
+    "surrey",
+    "laval",
+    "halifax",
+    "london, ontario",
+    "markham",
+    "vaughan",
+    "ontario",
+    "british columbia",
+    "alberta",
+    "quebec",
+    "nova scotia",
+    "manitoba",
+    "saskatchewan",
+  ],
+
+  // ── Australia ─────────────────────────────────────────────────────────────
+  Australia: [
+    "australia",
+    "australian",
+    "sydney",
+    "melbourne",
+    "brisbane",
+    "perth",
+    "adelaide",
+    "gold coast",
+    "canberra",
+    "newcastle (australia)",
+    "wollongong",
+    "geelong",
+    "hobart",
+    "townsville",
+    "cairns",
+    "darwin",
+    "new south wales",
+    "victoria (australia)",
+    "queensland",
+    "western australia",
+    "south australia",
+    "tasmania",
+  ],
+
+  // ── Other commonly-used countries ─────────────────────────────────────────
+  Afghanistan: ["afghanistan", "afghan", "kabul", "kandahar", "herat"],
+
+  "United Arab Emirates": [
+    "united arab emirates",
+    "uae",
+    "u.a.e.",
+    "dubai",
+    "abu dhabi",
+    "sharjah",
+    "ajman",
+    "ras al khaimah",
+  ],
+
+  Germany: [
+    "germany",
+    "german",
+    "deutschland",
+    "berlin",
+    "hamburg",
+    "munich",
+    "münchen",
+    "cologne",
+    "frankfurt",
+    "stuttgart",
+    "düsseldorf",
+    "dortmund",
+    "essen",
+    "leipzig",
+    "bremen",
+    "dresden",
+    "hanover",
+    "nuremberg",
+  ],
+
+  France: [
+    "france",
+    "french",
+    "paris",
+    "marseille",
+    "lyon",
+    "toulouse",
+    "nice",
+    "nantes",
+    "montpellier",
+    "strasbourg",
+    "bordeaux",
+    "lille",
+    "rennes",
+  ],
+
+  Italy: [
+    "italy",
+    "italian",
+    "rome",
+    "milan",
+    "naples",
+    "turin",
+    "palermo",
+    "genoa",
+    "bologna",
+    "florence",
+    "venice",
+    "bari",
+  ],
+
+  Spain: [
+    "spain",
+    "spanish",
+    "madrid",
+    "barcelona",
+    "valencia",
+    "seville",
+    "zaragoza",
+    "málaga",
+    "malaga",
+    "murcia",
+    "palma",
+    "bilbao",
+  ],
+
+  Netherlands: [
+    "netherlands",
+    "holland",
+    "dutch",
+    "amsterdam",
+    "rotterdam",
+    "the hague",
+    "den haag",
+    "utrecht",
+    "eindhoven",
+  ],
+
+  Sweden: [
+    "sweden",
+    "swedish",
+    "stockholm",
+    "gothenburg",
+    "göteborg",
+    "malmö",
+    "malmo",
+    "uppsala",
+  ],
+
+  Turkey: [
+    "turkey",
+    "türkiye",
+    "turkiye",
+    "turkish",
+    "istanbul",
+    "ankara",
+    "izmir",
+    "bursa",
+    "adana",
+  ],
+
+  China: [
+    "china",
+    "chinese",
+    "prc",
+    "beijing",
+    "shanghai",
+    "guangzhou",
+    "shenzhen",
+    "chengdu",
+    "wuhan",
+    "xi'an",
+    "xian",
+    "nanjing",
+    "hangzhou",
+    "chongqing",
+    "tianjin",
+    "suzhou",
+  ],
+
+  Japan: [
+    "japan",
+    "japanese",
+    "tokyo",
+    "osaka",
+    "nagoya",
+    "sapporo",
+    "fukuoka",
+    "kyoto",
+    "kobe",
+    "yokohama",
+    "hiroshima",
+  ],
+
+  "South Korea": [
+    "south korea",
+    "korea",
+    "korean",
+    "seoul",
+    "busan",
+    "incheon",
+    "daegu",
+    "daejeon",
+    "gwangju",
+  ],
+
+  Indonesia: [
+    "indonesia",
+    "indonesian",
+    "jakarta",
+    "surabaya",
+    "bandung",
+    "medan",
+    "bali",
+    "yogyakarta",
+    "semarang",
+  ],
+
+  Malaysia: [
+    "malaysia",
+    "malaysian",
+    "kuala lumpur",
+    "kl",
+    "penang",
+    "johor bahru",
+    "ipoh",
+    "subang jaya",
+  ],
+
+  Singapore: ["singapore", "singaporean"],
+
+  Nigeria: [
+    "nigeria",
+    "nigerian",
+    "lagos",
+    "abuja",
+    "kano",
+    "ibadan",
+    "kaduna",
+    "port harcourt",
+  ],
+
+  "South Africa": [
+    "south africa",
+    "south african",
+    "johannesburg",
+    "cape town",
+    "durban",
+    "pretoria",
+    "soweto",
+    "port elizabeth",
+    "gqeberha",
+  ],
+
+  Kenya: [
+    "kenya",
+    "kenyan",
+    "nairobi",
+    "mombasa",
+    "kisumu",
+    "nakuru",
+  ],
+
+  Ethiopia: ["ethiopia", "ethiopian", "addis ababa", "dire dawa"],
+
+  Egypt: ["egypt", "egyptian", "cairo", "alexandria", "giza"],
+
+  Brazil: [
+    "brazil",
+    "brasil",
+    "brazilian",
+    "são paulo",
+    "sao paulo",
+    "rio de janeiro",
+    "brasília",
+    "brasilia",
+    "fortaleza",
+    "salvador",
+    "belo horizonte",
+    "manaus",
+    "curitiba",
+    "recife",
+    "porto alegre",
+  ],
+
+  Mexico: [
+    "mexico",
+    "mexican",
+    "méxico",
+    "mexico city",
+    "ciudad de méxico",
+    "guadalajara",
+    "monterrey",
+    "puebla",
+    "tijuana",
+    "juárez",
+  ],
+
+  Argentina: [
+    "argentina",
+    "argentinian",
+    "buenos aires",
+    "córdoba",
+    "rosario",
+    "mendoza",
+  ],
+
+  "New Zealand": [
+    "new zealand",
+    "nz",
+    "auckland",
+    "wellington",
+    "christchurch",
+    "hamilton (nz)",
+    "dunedin",
+  ],
+
+  Ireland: [
+    "ireland",
+    "irish",
+    "republic of ireland",
+    "dublin",
+    "cork",
+    "galway",
+    "limerick",
+    "waterford",
+  ],
+
+  Portugal: [
+    "portugal",
+    "portuguese",
+    "lisbon",
+    "porto",
+    "braga",
+    "setúbal",
+    "coimbra",
+  ],
+
+  Poland: [
+    "poland",
+    "polish",
+    "warsaw",
+    "kraków",
+    "krakow",
+    "łódź",
+    "wrocław",
+    "poznań",
+    "gdańsk",
+  ],
+
+  Switzerland: [
+    "switzerland",
+    "swiss",
+    "zurich",
+    "zürich",
+    "geneva",
+    "basel",
+    "bern",
+    "lausanne",
+  ],
+
+  Belgium: [
+    "belgium",
+    "belgian",
+    "brussels",
+    "bruxelles",
+    "antwerp",
+    "ghent",
+    "liège",
+    "bruges",
+  ],
+
+  "Saudi Arabia": [
+    "saudi arabia",
+    "saudi",
+    "ksa",
+    "riyadh",
+    "jeddah",
+    "mecca",
+    "medina",
+    "dammam",
+  ],
+
+  Iran: [
+    "iran",
+    "iranian",
+    "persia",
+    "tehran",
+    "mashhad",
+    "isfahan",
+    "tabriz",
+    "shiraz",
+  ],
+
+  Israel: [
+    "israel",
+    "israeli",
+    "tel aviv",
+    "jerusalem",
+    "haifa",
+    "beersheba",
+  ],
+
+  Russia: [
+    "russia",
+    "russian",
+    "moscow",
+    "saint petersburg",
+    "st. petersburg",
+    "novosibirsk",
+    "yekaterinburg",
+    "nizhny novgorod",
+    "kazan",
+  ],
+
+  Ukraine: [
+    "ukraine",
+    "ukrainian",
+    "kyiv",
+    "kiev",
+    "kharkiv",
+    "odesa",
+    "odessa",
+    "dnipro",
+    "lviv",
+  ],
+
+  Myanmar: [
+    "myanmar",
+    "burma",
+    "burmese",
+    "yangon",
+    "rangoon",
+    "mandalay",
+    "naypyidaw",
+  ],
+
+  Thailand: [
+    "thailand",
+    "thai",
+    "bangkok",
+    "chiang mai",
+    "phuket",
+    "pattaya",
+  ],
+
+  Vietnam: [
+    "vietnam",
+    "vietnamese",
+    "hanoi",
+    "ho chi minh city",
+    "saigon",
+    "hcmc",
+    "da nang",
+    "haiphong",
+  ],
+
+  Philippines: [
+    "philippines",
+    "filipino",
+    "philippine",
+    "manila",
+    "quezon city",
+    "cebu",
+    "davao",
+    "zamboanga",
+  ],
+
+};
+
+/**
+ * Build a reverse lookup: lowercase alias → canonical country label.
+ */
+function buildLookup(
+  aliases: Record<string, string[]>
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [country, aliasList] of Object.entries(aliases)) {
+    // The canonical label itself is also a valid key
+    map.set(country.toLowerCase(), country);
+    for (const alias of aliasList) {
+      // Don't overwrite an already-set key to avoid ambiguous cities
+      // (first entry wins, which is the more prominent country)
+      if (!map.has(alias)) {
+        map.set(alias, country);
+      }
+    }
+  }
+  return map;
+}
+
+const LOOKUP = buildLookup(COUNTRY_ALIASES);
+
+/**
+ * Normalize a single location token to its canonical country label.
+ *
+ * - Trims whitespace.
+ * - Case-insensitive lookup against the alias table.
+ * - Falls back to the trimmed original value if no match is found.
+ */
+export function normalizeToCountry(raw: string): string {
+  const token = raw.trim();
+  if (!token) return token;
+  return LOOKUP.get(token.toLowerCase()) ?? token;
+}
+
+/**
+ * Split a raw "Based In" field, normalize each token to country level,
+ * deduplicate, and return `{ label, slug }` pairs ready for tag creation.
+ *
+ * Uses `slugify` from normalize.ts for slug generation.
+ */
+export function parseBasedIn(
+  raw: string | undefined | null
+): { label: string; slug: string }[] {
+  if (!raw || !raw.trim()) return [];
+
+  const seen = new Set<string>();
+  const results: { label: string; slug: string }[] = [];
+
+  for (const part of raw.split(",")) {
+    const country = normalizeToCountry(part.trim());
+    if (!country) continue;
+
+    // Import slugify inline to avoid circular deps with normalize.ts
+    const slug = country
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // strip accents
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-");
+
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    results.push({ label: country, slug });
+  }
+
+  return results;
+}

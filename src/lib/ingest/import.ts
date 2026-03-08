@@ -13,6 +13,7 @@ import {
   parsePriceTier,
   makeUniqueSlug,
 } from "./normalize";
+import { parseBasedIn } from "./countries";
 import type { RawBrandRow } from "./parse";
 
 export interface ImportResult {
@@ -182,9 +183,9 @@ export function importRows(rows: RawBrandRow[]): ImportResult {
         linkBrandTag(db, brandId, tagId);
       }
 
-      // Link based_in tag
+      // Link based_in tag (normalized to country level)
       if (row.basedIn?.trim()) {
-        const basedInParsed = parseMultiValue(row.basedIn);
+        const basedInParsed = parseBasedIn(row.basedIn);
         for (const loc of basedInParsed) {
           const tagId = getOrCreateTag(db, "based_in", loc.label, loc.slug);
           linkBrandTag(db, brandId, tagId);
