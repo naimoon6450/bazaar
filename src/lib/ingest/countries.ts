@@ -122,7 +122,6 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
     "rawalpindi",
     "faisalabad",
     "multan",
-    "hyderabad",   // Hyderabad, Sindh — listed after India's to avoid conflict (slug dedupe handles it)
     "peshawar",
     "quetta",
     "sialkot",
